@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wessels Vertical Graphic Generator</title>
+
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color-scheme: dark;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #0b1020;
+      color: #fff;
+    }
+
+    .wrap {
+      max-width: 1800px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 20px;
+    }
+
+    .panel,
+    .preview {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+    }
+
+    .sub {
+      font-size: 14px;
+      opacity: 0.85;
+      margin-bottom: 18px;
+      line-height: 1.4;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .field input,
+    .field textarea {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      padding: 12px;
+      font: inherit;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .field textarea {
+      resize: vertical;
+      min-height: 150px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    .btn {
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 700;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-size: 13px;
+      opacity: 0.85;
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+
+    .error {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #ffb4b4;
+      white-space: pre-wrap;
+    }
+
+    canvas {
+      width: 100%;
+      max-width: 760px;
+      height: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: #111;
+      display: block;
+    }
+
+    .previewTitle {
+      opacity: 0.85;
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 1100px) {
+      .wrap {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>Wessels Vertical Graphic Generator</h1>
+      <div class="sub">
+        Upload a photo, add text, preview it live, and export a PNG.
+      </div>
+
+      <div class="field">
+        <label for="photo">Photo</label>
+        <input id="photo" type="file" accept="image/*">
+      </div>
+
+      <div class="field">
+        <label for="nameText">Name</label>
+        <input id="nameText" type="text" maxlength="100" placeholder="JOHN SMITH">
+      </div>
+
+      <div class="field">
+        <label for="quoteText">Quote</label>
+        <textarea id="quoteText" maxlength="1200" placeholder="Robert Wessels is the leader Maine needs."></textarea>
+      </div>
+
+      <div class="field">
+        <label for="sloganText">Bottom Statement</label>
+        <input id="sloganText" type="text" maxlength="140" placeholder="LEADERSHIP FOR MAINE">
+      </div>
+
+      <div class="field">
+        <label for="fileName">Export Filename</label>
+        <input id="fileName" type="text" maxlength="140" placeholder="wessels-graphic">
+      </div>
+
+      <div class="row">
+        <button id="downloadBtn" class="btn" disabled>Download PNG</button>
+        <button id="resetBtn" class="btn" type="button">Reset</button>
+      </div>
+
+      <div id="status" class="status">Load a photo to begin.</div>
+      <div id="error" class="error"></div>
+    </div>
+
+    <div class="preview">
+      <div class="previewTitle">Preview</div>
+      <canvas id="canvas" width="1365" height="2048"></canvas>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const TEMPLATE_SRC = "template2.png";
+      const WIDTH = 1365;
+      const HEIGHT = 2048;
+      const DISCLAIMER = "Paid for and Authorized by Wessels for Maine";
+
+      const LAYOUT = {
+        // Deliberately oversized so the image fully fills the transparent hole.
+        // Anything outside the hole is hidden by the template PNG.
+        photo: {
+          x: 730,
+          y: 250,
+          w: 590,
+          h: 1140
+        },
+
+        name: {
+          x: 105,
+          y: 360,
+          maxWidth: 610,
+          maxHeight: 190,
+          fontFamily: "Arial Black, Arial, sans-serif",
+          fontStyle: "italic",
+          fontWeight: 900,
+          startSize: 66,
+          minSize: 28,
+          lineHeight: 1.04,
+          align: "left",
+          fillStyle: "#ffffff",
+          shadowColor: "rgba(0,0,0,0.34)",
+          shadowBlur: 6,
+          shadowOffsetX: 0,
+          shadowOffsetY: 3
+        },
+
+        // Starts 150px higher than before.
+        quote: {
+          x: 360,
+          top: 305,
+          bottom: 1375,
+          boxWidth: 560,
+          fontFamily: "Arial, sans-serif",
+          fontStyle: "italic",
+          fontWeight: 700,
+          fontSize: 44,
+          lineHeight: 1.18,
+          align: "center",
+          fillStyle: "#ffffff",
+          shadowColor: "rgba(0,0,0,0.28)",
+          shadowBlur: 4,
+          shadowOffsetX: 0,
+          shadowOffsetY: 2
+        },
+
+        slogan: {
+          x: 95,
+          y: 1660,
+          maxWidth: 1080,
+          fontFamily: "Arial Black, Arial, sans-serif",
+          fontStyle: "italic",
+          fontWeight: 900,
+          startSize: 58,
+          minSize: 24,
+          align: "left",
+          fillStyle: "#ffffff",
+          shadowColor: "rgba(0,0,0,0.28)",
+          shadowBlur: 4,
+          shadowOffsetX: 0,
+          shadowOffsetY: 2
+        },
+
+        disclaimer: {
+          x: WIDTH / 2,
+          y: 1995,
+          font: "22px Arial, sans-serif",
+          fillStyle: "rgba(255,255,255,0.88)",
+          align: "center",
+          baseline: "middle"
+        }
+      };
+
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const elPhoto = document.getElementById("photo");
+      const elName = document.getElementById("nameText");
+      const elQuote = document.getElementById("quoteText");
+      const elSlogan = document.getElementById("sloganText");
+      const elFileName = document.getElementById("fileName");
+      const btnDownload = document.getElementById("downloadBtn");
+      const btnReset = document.getElementById("resetBtn");
+      const elStatus = document.getElementById("status");
+      const elError = document.getElementById("error");
+
+      let templateImg = null;
+      let portraitImg = null;
+      let blobURL = null;
+      let renderToken = 0;
+
+      function setStatus(msg) {
+        elStatus.textContent = msg || "";
+      }
+
+      function setError(msg) {
+        elError.textContent = msg || "";
+      }
+
+      function revokeBlobURL() {
+        if (blobURL) {
+          URL.revokeObjectURL(blobURL);
+          blobURL = null;
+        }
+      }
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error(`Could not load ${src}`));
+          img.src = src;
+        });
+      }
+
+      function readFile(file) {
+        return new Promise((resolve, reject) => {
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+
+          img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(img);
+          };
+
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("That photo could not be opened."));
+          };
+
+          img.src = url;
+        });
+      }
+
+      function canvasToBlob(canvas, type = "image/png") {
+        return new Promise((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error("PNG export failed."));
+          }, type);
+        });
+      }
+
+      function drawCover(img, x, y, w, h) {
+        const iw = img.naturalWidth || img.width;
+        const ih = img.naturalHeight || img.height;
+
+        const scale = Math.max(w / iw, h / ih);
+        const sw = w / scale;
+        const sh = h / scale;
+        const sx = (iw - sw) / 2;
+        const sy = (ih - sh) / 2;
+
+        ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+      }
+
+      function breakLongToken(token, maxWidth) {
+        const parts = [];
+        let current = "";
+
+        for (const ch of token) {
+          const test = current + ch;
+          if (ctx.measureText(test).width <= maxWidth || current.length === 0) {
+            current = test;
+          } else {
+            parts.push(current);
+            current = ch;
+          }
+        }
+
+        if (current) parts.push(current);
+        return parts;
+      }
+
+      function wrapTextSmart(text, maxWidth) {
+        const paragraphs = String(text || "")
+          .replace(/\r/g, "")
+          .split("\n");
+
+        const lines = [];
+
+        for (const paragraph of paragraphs) {
+          const trimmed = paragraph.trim();
+
+          if (!trimmed) {
+            lines.push("");
+            continue;
+          }
+
+          const rawWords = trimmed.split(/\s+/);
+          const words = [];
+
+          for (const word of rawWords) {
+            if (ctx.measureText(word).width <= maxWidth) {
+              words.push(word);
+            } else {
+              words.push(...breakLongToken(word, maxWidth));
+            }
+          }
+
+          let line = "";
+
+          for (const word of words) {
+            const test = line ? `${line} ${word}` : word;
+
+            if (ctx.measureText(test).width <= maxWidth) {
+              line = test;
+            } else {
+              if (line) lines.push(line);
+              line = word;
+            }
+          }
+
+          if (line) lines.push(line);
+        }
+
+        return lines;
+      }
+
+      function fitSingleLineText(text, cfg) {
+        const value = String(text || "").trim();
+        if (!value) return null;
+
+        let size = cfg.startSize;
+
+        while (size >= cfg.minSize) {
+          const font = `${cfg.fontStyle} ${cfg.fontWeight} ${size}px ${cfg.fontFamily}`;
+          ctx.font = font;
+
+          if (ctx.measureText(value).width <= cfg.maxWidth) {
+            return { font, text: value };
+          }
+
+          size -= 2;
+        }
+
+        const font = `${cfg.fontStyle} ${cfg.fontWeight} ${cfg.minSize}px ${cfg.fontFamily}`;
+        ctx.font = font;
+
+        let clipped = value;
+        while (ctx.measureText(clipped + "…").width > cfg.maxWidth && clipped.length > 0) {
+          clipped = clipped.slice(0, -1);
+        }
+
+        return { font, text: clipped + "…" };
+      }
+
+      function drawSingleLineText(text, cfg) {
+        const fitted = fitSingleLineText(text, cfg);
+        if (!fitted) return;
+
+        ctx.save();
+        ctx.font = fitted.font;
+        ctx.fillStyle = cfg.fillStyle;
+        ctx.textAlign = cfg.align;
+        ctx.textBaseline = "middle";
+
+        if (cfg.shadowColor) {
+          ctx.shadowColor = cfg.shadowColor;
+          ctx.shadowBlur = cfg.shadowBlur || 0;
+          ctx.shadowOffsetX = cfg.shadowOffsetX || 0;
+          ctx.shadowOffsetY = cfg.shadowOffsetY || 0;
+        }
+
+        ctx.fillText(fitted.text, cfg.x, cfg.y, cfg.maxWidth);
+        ctx.restore();
+      }
+
+      function fitNameBlock(text, cfg) {
+        const value = String(text || "").trim();
+        if (!value) return null;
+
+        let size = cfg.startSize;
+
+        while (size >= cfg.minSize) {
+          const font = `${cfg.fontStyle} ${cfg.fontWeight} ${size}px ${cfg.fontFamily}`;
+          ctx.font = font;
+
+          const lines = wrapTextSmart(value, cfg.maxWidth);
+          const lineHeightPx = size * cfg.lineHeight;
+          const totalHeight = lines.length * lineHeightPx;
+
+          if (totalHeight <= cfg.maxHeight && lines.length <= 3) {
+            return { font, lines, height: totalHeight, lineHeightPx };
+          }
+
+          size -= 2;
+        }
+
+        const font = `${cfg.fontStyle} ${cfg.fontWeight} ${cfg.minSize}px ${cfg.fontFamily}`;
+        ctx.font = font;
+
+        let lines = wrapTextSmart(value, cfg.maxWidth);
+        const maxLines = Math.max(1, Math.floor(cfg.maxHeight / (cfg.minSize * cfg.lineHeight)));
+        lines = lines.slice(0, maxLines);
+
+        if (lines.length) {
+          let last = lines[lines.length - 1];
+          while (ctx.measureText(last + "…").width > cfg.maxWidth && last.length > 0) {
+            last = last.slice(0, -1);
+          }
+          lines[lines.length - 1] = last + "…";
+        }
+
+        const lineHeightPx = cfg.minSize * cfg.lineHeight;
+
+        return {
+          font,
+          lines,
+          height: lines.length * lineHeightPx,
+          lineHeightPx
+        };
+      }
+
+      function drawNameBlock(text, cfg) {
+        const fitted = fitNameBlock(text, cfg);
+        if (!fitted) return { bottomY: cfg.y };
+
+        ctx.save();
+        ctx.font = fitted.font;
+        ctx.fillStyle = cfg.fillStyle;
+        ctx.textAlign = cfg.align;
+        ctx.textBaseline = "top";
+
+        if (cfg.shadowColor) {
+          ctx.shadowColor = cfg.shadowColor;
+          ctx.shadowBlur = cfg.shadowBlur || 0;
+          ctx.shadowOffsetX = cfg.shadowOffsetX || 0;
+          ctx.shadowOffsetY = cfg.shadowOffsetY || 0;
+        }
+
+        fitted.lines.forEach((line, i) => {
+          ctx.fillText(line, cfg.x, cfg.y + i * fitted.lineHeightPx, cfg.maxWidth);
+        });
+
+        ctx.restore();
+
+        return {
+          bottomY: cfg.y + fitted.height
+        };
+      }
+
+      // Fixed-size quote. Wraps. Never shrinks.
+      function drawParagraph(text, cfg, dynamicTop) {
+        const value = String(text || "").trim();
+        if (!value) return;
+
+        ctx.save();
+        ctx.font = `${cfg.fontStyle} ${cfg.fontWeight} ${cfg.fontSize}px ${cfg.fontFamily}`;
+
+        let lines = wrapTextSmart(value, cfg.boxWidth);
+        const lineHeightPx = cfg.fontSize * cfg.lineHeight;
+        const availableHeight = Math.max(60, cfg.bottom - dynamicTop);
+        const maxLines = Math.max(1, Math.floor(availableHeight / lineHeightPx));
+
+        if (lines.length > maxLines) {
+          lines = lines.slice(0, maxLines);
+
+          let last = lines[lines.length - 1];
+          while (ctx.measureText(last + "…").width > cfg.boxWidth && last.length > 0) {
+            last = last.slice(0, -1);
+          }
+          lines[lines.length - 1] = last + "…";
+        }
+
+        ctx.fillStyle = cfg.fillStyle;
+        ctx.textAlign = cfg.align;
+        ctx.textBaseline = "top";
+
+        if (cfg.shadowColor) {
+          ctx.shadowColor = cfg.shadowColor;
+          ctx.shadowBlur = cfg.shadowBlur || 0;
+          ctx.shadowOffsetX = cfg.shadowOffsetX || 0;
+          ctx.shadowOffsetY = cfg.shadowOffsetY || 0;
+        }
+
+        lines.forEach((line, i) => {
+          ctx.fillText(line, cfg.x, dynamicTop + i * lineHeightPx);
+        });
+
+        ctx.restore();
+      }
+
+      function drawDisclaimer(cfg) {
+        ctx.save();
+        ctx.font = cfg.font;
+        ctx.fillStyle = cfg.fillStyle;
+        ctx.textAlign = cfg.align;
+        ctx.textBaseline = cfg.baseline;
+        ctx.fillText(DISCLAIMER, cfg.x, cfg.y);
+        ctx.restore();
+      }
+
+      function buildExportName() {
+        let name = elFileName.value.trim();
+
+        if (!name) {
+          name = elName.value
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
+
+          if (!name) {
+            name = "wessels-graphic";
+          }
+        }
+
+        name = name.replace(/\.png$/i, "");
+        return name + ".png";
+      }
+
+      async function render() {
+        const token = ++renderToken;
+        setError("");
+        btnDownload.disabled = true;
+
+        try {
+          if (!templateImg) {
+            setStatus("Loading template...");
+            templateImg = await loadImage(TEMPLATE_SRC);
+          }
+
+          if (token !== renderToken) return;
+
+          ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+          if (portraitImg) {
+            drawCover(
+              portraitImg,
+              LAYOUT.photo.x,
+              LAYOUT.photo.y,
+              LAYOUT.photo.w,
+              LAYOUT.photo.h
+            );
+          }
+
+          ctx.drawImage(templateImg, 0, 0, WIDTH, HEIGHT);
+
+          const nameMetrics = drawNameBlock(elName.value.toUpperCase(), LAYOUT.name);
+          const quoteTop = Math.max(LAYOUT.quote.top, nameMetrics.bottomY + 28);
+
+          drawParagraph(elQuote.value, LAYOUT.quote, quoteTop);
+          drawSingleLineText(elSlogan.value.toUpperCase(), LAYOUT.slogan);
+          drawDisclaimer(LAYOUT.disclaimer);
+
+          const blob = await canvasToBlob(canvas, "image/png");
+          if (token !== renderToken) return;
+
+          revokeBlobURL();
+          blobURL = URL.createObjectURL(blob);
+          btnDownload.disabled = false;
+          setStatus(`Preview ready. Export filename: ${buildExportName()}`);
+        } catch (err) {
+          if (token !== renderToken) return;
+          setError(err.message || String(err));
+          setStatus("Rendering failed.");
+        }
+      }
+
+      function download() {
+        if (!blobURL) return;
+
+        const a = document.createElement("a");
+        a.href = blobURL;
+        a.download = buildExportName();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+
+      function reset() {
+        elPhoto.value = "";
+        elName.value = "";
+        elQuote.value = "";
+        elSlogan.value = "";
+        elFileName.value = "";
+        portraitImg = null;
+        render();
+      }
+
+      elPhoto.addEventListener("change", async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        try {
+          portraitImg = await readFile(file);
+          await render();
+        } catch (err) {
+          portraitImg = null;
+          setError(err.message || String(err));
+        }
+      });
+
+      [elName, elQuote, elSlogan, elFileName].forEach((el) => {
+        el.addEventListener("input", render);
+      });
+
+      btnDownload.addEventListener("click", download);
+      btnReset.addEventListener("click", reset);
+      window.addEventListener("beforeunload", revokeBlobURL);
+
+      render();
+    })();
+  </script>
+</body>
+</html>
